@@ -12,7 +12,7 @@ import sys
 import collections
 from datetime import datetime, timezone, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from urllib.parse import unquote, parse_qsl, urlsplit, parse_qs
+from urllib.parse import unquote, parse_qsl, urlsplit
 from collections import deque
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -20,32 +20,21 @@ from urllib3.util.retry import Retry
 # 配置日志记录
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# 加载配置文件 (config.yaml) - 必须存在，否则退出
 def load_config():
     config_path = "config.yaml"
-    if not os.path.exists(config_path):
-        logging.error(f"Configuration file {config_path} not found. Exiting.")
-        sys.exit(1)
+    if not os.path.exists(config_path): sys.exit(1)
     try:
         with open(config_path, "r", encoding="utf-8") as f:
             config = yaml.safe_load(f)
-            if not config:
-                logging.error("Configuration file is empty. Exiting.")
-                sys.exit(1)
             return config
-    except Exception as e:
-        logging.error(f"Failed to load {config_path}: {e}. Exiting.")
-        sys.exit(1)
+    except: sys.exit(1)
 
-# 加载静态规则配置文件 (rules.yaml)
 def load_rules_config():
     rules_file = "rules.yaml"
     if os.path.exists(rules_file):
         with open(rules_file, "r", encoding="utf-8") as f:
             try: return yaml.safe_load(f)
-            except Exception as e:
-                logging.error(f"Error loading rules.yaml: {e}")
-                return {}
+            except: return {}
     return {}
 
 config = load_config()
@@ -83,13 +72,8 @@ PROTO_PATTERNS = {
 }
 
 thread_local = threading.local()
-# 优化：使用 OrderedDict 进行 LRU 缓存去重
 memo_b64 = collections.OrderedDict()
 memo_lock = threading.Lock()
-
-def is_valid_clash_node(node):
-    if not node: return False
-    return node.get("server") and node.get("port") and (node.get("type") in ALLOWED_PROTOCOLS or node.get("type") == "hysteria2")
 
 def parse_uri_to_clash(uri):
     try:
@@ -170,7 +154,7 @@ class NodeManager:
 
     def save_to_file(self, file_path, is_temp=False):
         raw_data = sorted(list(self.temp_nodes if is_temp else self.nodes))
-        clash_proxies = [node for uri in raw_data if (node := parse_uri_to_clash(uri)) and is_valid_clash_node(node)]
+        clash_proxies = [node for uri in raw_data if (node := parse_uri_to_clash(uri)) and (node.get("server") and node.get("port"))]
         scraped_names = [p["name"] for p in clash_proxies]
         yaml_data = copy.deepcopy(rules_config)
         for group in yaml_data.get("proxy-groups", []):
@@ -211,34 +195,17 @@ def get_session():
 def score_nodes(count, url):
     return (10 if count <= 2 else 5 if count <= 10 else 1) + (1 if "gist" in url else 0)
 
+# 还原回原有的 Hash 逻辑，避免过滤掉已有节点
 def core_hash(uri):
-    """优化后的 Hash：包含 uuid/username 和 sni"""
     if not uri or "://" not in uri: return None
-    try:
-        uri = uri.replace("hy2://", "hysteria2://")
-        parsed = urlsplit(uri)
-        query = parse_qs(parsed.query)
-        scheme = parsed.scheme.lower()
-        host = parsed.hostname or ""
-        port = parsed.port or (443 if scheme == 'vless' else 0)
-        uuid = parsed.username or ""
-        sni = query.get("sni", [""])[0]
-        normalized = f"{scheme}|{host}|{port}|{uuid}|{sni}"
-        return hashlib.md5(normalized.encode()).hexdigest()
-    except: return None
-
-def is_valid_node(uri):
-    if len(uri) < 20 or "://" not in uri: return False
+    uri = uri.replace("hy2://", "hysteria2://")
     parsed = urlsplit(uri)
-    if not parsed.hostname or parsed.scheme.lower() not in ALLOWED_PROTOCOLS: return False
-    if any(c in uri for c in ['{', '}', ' ']): return False
-    return True
+    normalized = f"{parsed.scheme.lower()}://{parsed.hostname or ''}:{parsed.port or (443 if parsed.scheme.lower() == 'vless' else 0)}"
+    return hashlib.md5(normalized.encode()).hexdigest()
 
 def extract_nodes(text, depth=0):
-    # 优化：快速过滤
     if not text or ("://" not in text and "base64" not in text.lower()): return []
     if len(text) < 20: return []
-    
     found = []
     if depth < MAX_RECURSION:
         b64_matches = re.findall(r'(?:[A-Za-z0-9+/]{4}){10,}', text)
@@ -251,10 +218,8 @@ def extract_nodes(text, depth=0):
                 decoded = base64.b64decode(b64 + '=' * (-len(b64) % 4)).decode('utf-8', errors='ignore')
                 if "://" in decoded: found.extend(extract_nodes(decoded, depth + 1))
             except: pass
-    
-    # 优化：正则提取
     for _, pattern in PROTO_PATTERNS.items():
-        found.extend([m for m in pattern.findall(text) if is_valid_node(m)])
+        found.extend([m for m in pattern.findall(text) if len(m) >= 20 and "://" in m])
     return found[:MAX_PER_LAYER]
 
 def process_raw(raw_url):
@@ -264,7 +229,7 @@ def process_raw(raw_url):
             if r.status_code == 200 and len(r.text) < MAX_TEXT_SIZE:
                 nodes = extract_nodes(r.text)
                 return raw_url, nodes, len(nodes)
-        except Exception as e: logging.error(f"Failed to fetch {raw_url}: {e}")
+        except: pass
         return raw_url, [], 0
 
 def main():
@@ -283,15 +248,12 @@ def main():
                         files = gist.get("files", {})
                         if any(k in desc for k in SEARCH_EXCLUDE): continue
                         if SEARCH_INCLUDE:
-                            if not any(k in desc for k in SEARCH_INCLUDE) and not any(any(k in f.lower() for k in SEARCH_INCLUDE) for f in files):
-                                continue
+                            if not any(k in desc for k in SEARCH_INCLUDE) and not any(any(k in f.lower() for k in SEARCH_INCLUDE) for f in files): continue
                         for f_info in files.values():
                             raw = f_info.get("raw_url")
                             fn = f_info.get("filename", "").lower()
-                            if raw and not (fn in EXCLUDE_EQUALS or any(k in fn for k in EXCLUDE_CONTAINS)): 
-                                urls_to_scan.add(raw)
+                            if raw and not (fn in EXCLUDE_EQUALS or any(k in fn for k in EXCLUDE_CONTAINS)): urls_to_scan.add(raw)
         except: continue
-
     active_urls_found = []
     with ThreadPoolExecutor(max_workers=12) as executor:
         futures = [executor.submit(process_raw, url) for url in urls_to_scan]
@@ -303,24 +265,10 @@ def main():
                 with stats_lock: stats_data[url] = count
                 score = score_nodes(count, url)
                 for node in result: manager.add_node(node, is_temp=(score >= 8))
-
     manager.save_to_file(ALL_NODES_FILE, is_temp=False)
     manager.save_to_file(TEMP_LOG_FILE, is_temp=True)
     manager.save_to_dat(ALL_NODES_DAT)
     manager.save_sources()
-    
-    if os.path.exists(ACTIVE_URLS_FILE):
-        with open(ACTIVE_URLS_FILE, "r", encoding="utf-8") as f:
-            existing_urls = {line.strip() for line in f if line.strip()}
-    else: existing_urls = set()
-    
-    combined_urls = sorted(existing_urls.union(set(active_urls_found)))
-    with open(ACTIVE_URLS_FILE, "w", encoding="utf-8") as f:
-        for url in combined_urls: f.write(url + "\n")
-
-    with open(STATS_FILE, "a", encoding="utf-8", newline='') as f:
-        writer = csv.writer(f)
-        for url, count in stats_data.items(): writer.writerow([url, count])
     print(f"Success! Total nodes: {len(manager.nodes) + len(manager.temp_nodes)}. Sources: {len(manager.source_urls)}")
 
 if __name__ == "__main__":
