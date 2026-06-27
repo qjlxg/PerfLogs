@@ -24,7 +24,7 @@ def load_config():
         with open("config.yaml", "r", encoding="utf-8") as f:
             return yaml.safe_load(f)
     return {
-        "settings": {"max_file_size_mb": 5, "timeout_seconds": 20, "gist_pages": 10}, 
+        "settings": {"max_file_size_mb": 5, "timeout_seconds": 20, "gist_pages": 50}, 
         "filters": {"exclude_equals": [], "exclude_contains": [], "exclude_owners": []}, 
         "search_keywords": {"include": [], "exclude": []},
         "protocols": ["vless", "hysteria2", "hy2", "anytls", "hysteria", "tuic"]
