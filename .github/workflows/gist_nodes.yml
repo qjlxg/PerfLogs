@@ -52,8 +52,8 @@ jobs:
           python3 << 'EOF'
           import json, os
           files = {}
-          # 同步包含统计文件
-          for fn in ["clash_test.yaml", "all_nodes.yaml"]:
+          # 同步文件
+          for fn in ["gist_stats.csv", "all_nodes.yaml"]:
               if os.path.exists(fn) and os.path.getsize(fn) > 0:
                   with open(fn, "r", encoding="utf-8") as f:
                       files[fn] = {"content": f.read()}
@@ -80,7 +80,7 @@ jobs:
           # 确保将所有生成的文件纳入提交
           git add clash_test.yaml all_nodes.yaml temp_log.yaml all_nodes.dat gist_stats.csv source_history.csv active_raw_urls.txt 2>/dev/null || true
           
-          # 如果没有内容变更，生成一个心跳文件强制提交
+        
           if git diff --staged --quiet; then
             echo "No changes detected. Generating heartbeat."
             date > .heartbeat
