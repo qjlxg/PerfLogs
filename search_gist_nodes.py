@@ -10,7 +10,7 @@ import logging
 import copy
 from datetime import datetime, timezone, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from urllib.parse import unquote, parse_qsl, urlsplit
+from urllib.parse import unquote, parse_qsl, urlsplit, urlencode, urlunsplit
 from collections import deque
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -23,7 +23,7 @@ def load_config():
     if os.path.exists("config.yaml"):
         with open("config.yaml", "r", encoding="utf-8") as f:
             return yaml.safe_load(f)
-    return {"settings": {"max_file_size_mb": 5, "timeout_seconds": 20, "gist_pages": 1}, "filters": {"exclude_equals": [], "exclude_contains": [], "exclude_owners": []}, "protocols": ["vless", "hysteria2", "hy2", "anytls", "hysteria", "tuic"]}
+    return {"settings": {"max_file_size_mb": 5, "timeout_seconds": 20, "gist_pages": 1}, "filters": {"exclude_equals": [], "exclude_contains": [], "exclude_owners": []}, "protocols": ["vless", "hysteria2", "anytls", "hysteria", "tuic"]}
 
 # 加载静态规则配置文件 (rules.yaml)
 def load_rules_config():
@@ -61,7 +61,7 @@ EXCLUDE_CONTAINS = {f.lower() for f in config["filters"].get("exclude_contains",
 EXCLUDE_OWNERS = {o.lower() for o in config["filters"].get("exclude_owners", [])}
 
 # 严格限定支持的协议
-SUPPORTED_PROTOCOLS = ["vless", "hysteria2", "hy2", "anytls", "hysteria", "tuic"]
+SUPPORTED_PROTOCOLS = ["vless", "hysteria2", "anytls", "hysteria", "tuic"]
 ALLOWED_PROTOCOLS = set(SUPPORTED_PROTOCOLS)
 
 PROTO_PATTERNS = {
@@ -71,9 +71,13 @@ PROTO_PATTERNS = {
 
 thread_local = threading.local()
 
+def normalize_node(node):
+    # 对节点内部的字典 Key 进行排序处理，防止序列化差异
+    return {k: node[k] for k in sorted(node.keys())}
+
 def is_valid_clash_node(node):
     if not node: return False
-    return node.get("server") and node.get("port") and (node.get("type") in ALLOWED_PROTOCOLS or node.get("type") == "hysteria2")
+    return node.get("server") and node.get("port") and (node.get("type") in ALLOWED_PROTOCOLS)
 
 def parse_uri_to_clash(uri):
     try:
@@ -84,7 +88,7 @@ def parse_uri_to_clash(uri):
         query = dict(parse_qsl(parsed.query))
         node = {
             "name": unquote(parsed.fragment) if parsed.fragment else f"{scheme}-{parsed.hostname}-{parsed.port}",
-            "type": "hysteria2" if scheme == "hy2" else scheme,
+            "type": scheme,
             "server": parsed.hostname,
             "port": int(parsed.port) if parsed.port else 443,
             "udp": True
@@ -105,8 +109,7 @@ def parse_uri_to_clash(uri):
             elif node["network"] == "grpc":
                 node["grpc-opts"] = {"grpc-service-name": query.get("serviceName", "")}
 
-        elif scheme in ["hysteria2", "hy2"]:
-            node["type"] = "hysteria2"
+        elif scheme == "hysteria2":
             node["auth"] = parsed.username if parsed.username else query.get("auth", "")
             node["sni"] = query.get("sni", "")
             node["skip-cert-verify"] = query.get("insecure") in ["1", "true"]
@@ -132,7 +135,7 @@ def parse_uri_to_clash(uri):
             node["tls"] = True
             node["sni"] = query.get("sni", "")
 
-        return node
+        return normalize_node(node)
     except: return None
 
 class NodeManager:
@@ -186,22 +189,18 @@ class NodeManager:
         clash_proxies = [node for uri in raw_data if (node := parse_uri_to_clash(uri)) and is_valid_clash_node(node)]
         scraped_names = [p["name"] for p in clash_proxies]
 
-        # 深度复制规则配置
         yaml_data = copy.deepcopy(rules_config)
-        
-        # 注入节点到 proxy-groups 中的 "自动优选"
         proxy_groups = yaml_data.get("proxy-groups", [])
         for group in proxy_groups:
             if group.get("name") == "自动优选":
                 group["proxies"] = scraped_names
         
-        # 设置基础信息
         yaml_data["proxies"] = clash_proxies
 
         beijing_time = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S")
         with open(file_path + ".tmp", "w", encoding="utf-8") as f:
             f.write(f"# Last updated: {beijing_time} | Scraped nodes: {len(clash_proxies)}\n")
-            yaml.dump(yaml_data, f, allow_unicode=True, sort_keys=False)
+            yaml.dump(yaml_data, f, allow_unicode=True, sort_keys=True, indent=2)
         os.replace(file_path + ".tmp", file_path)
 
     def save_to_dat(self, file_path):
@@ -235,12 +234,15 @@ def score_nodes(count, url):
 
 def core_hash(uri):
     if not uri or "://" not in uri: return None
+    # 统一 Schema
     uri = uri.replace("hy2://", "hysteria2://")
     parsed = urlsplit(uri)
-    netloc = parsed.hostname if parsed.hostname else ""
+    scheme = parsed.scheme.lower()
+    netloc = parsed.hostname.lower() if parsed.hostname else ""
+    # 参数排序
     query = dict(parse_qsl(parsed.query))
-    normalized_query = '&'.join(f'{k}={v}' for k, v in sorted(query.items()))
-    normalized = f"{parsed.scheme}://{netloc}{parsed.path}?{normalized_query}"
+    normalized_query = urlencode(sorted(query.items()))
+    normalized = urlunsplit((scheme, netloc, parsed.path, normalized_query, parsed.fragment))
     return hashlib.md5(normalized.encode()).hexdigest()
 
 def is_valid_node(uri):
@@ -249,7 +251,6 @@ def is_valid_node(uri):
     if not parsed.hostname: return False
     if parsed.scheme.lower() not in ALLOWED_PROTOCOLS: return False
     if any(c in uri for c in ['{', '}', ' ']): return False
-    if not (parsed.username or len(uri.split('@')[-1].split(':')[0].split('.')) > 1): return False
     return True
 
 def extract_nodes(text, depth=0):
