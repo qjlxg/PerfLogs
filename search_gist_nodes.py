@@ -64,15 +64,15 @@ EXCLUDE_OWNERS = {o.lower() for o in config["filters"].get("exclude_owners", [])
 SUPPORTED_PROTOCOLS = ["vless", "hysteria2", "anytls", "hysteria", "tuic"]
 ALLOWED_PROTOCOLS = set(SUPPORTED_PROTOCOLS)
 
-PROTO_PATTERNS = {
-    p: re.compile(rf"{re.escape(p)}[a-zA-Z0-9\-\._~:/\?#\[\]@!$&'()*+,;=]{{20,256}}", re.I)
-    for p in sorted(SUPPORTED_PROTOCOLS, key=len, reverse=True)
-}
+# 优化正则：合并协议扫描，只扫一次
+PROTO_REGEX = re.compile(
+    r"(vless|hysteria2|anytls|hysteria|tuic)[a-zA-Z0-9\-._~:/?#\[\]@!$&'()*+,;=]{20,256}",
+    re.I
+)
 
 thread_local = threading.local()
 
 def normalize_node(node):
-    # 对节点内部的字典 Key 进行排序处理，防止序列化差异
     return {k: node[k] for k in sorted(node.keys())}
 
 def is_valid_clash_node(node):
@@ -148,22 +148,19 @@ class NodeManager:
         self.source_lock = threading.Lock()
         self.seen_core_hashes_all = set()
         self.seen_core_hashes_temp = set()
-        self.hash_history_all = deque(maxlen=20000)
-        self.hash_history_temp = deque(maxlen=20000)
 
     def add_node(self, uri, is_temp=False):
         if not uri or "://" not in uri: return
         h = core_hash(uri)
         if not h: return
-        target_set, target_lock, seen_set, history = (
-            (self.temp_nodes, self.temp_lock, self.seen_core_hashes_temp, self.hash_history_temp)
-            if is_temp else (self.nodes, self.nodes_lock, self.seen_core_hashes_all, self.hash_history_all)
+        target_set, target_lock, seen_set = (
+            (self.temp_nodes, self.temp_lock, self.seen_core_hashes_temp)
+            if is_temp else (self.nodes, self.nodes_lock, self.seen_core_hashes_all)
         )
         with target_lock:
-            if h not in seen_set:
-                seen_set.add(h)
-                target_set.add(uri)
-                history.append(h)
+            if h in seen_set: return
+            seen_set.add(h)
+            target_set.add(uri)
 
     def add_source(self, url):
         with self.source_lock: self.source_urls.add(url)
@@ -234,16 +231,12 @@ def score_nodes(count, url):
 def core_hash(uri):
     if not uri or "://" not in uri: return None
     uri = uri.replace("hy2://", "hysteria2://")
-    parsed = urlsplit(uri)
-    scheme = parsed.scheme.lower()
-    netloc = parsed.hostname.lower() if parsed.hostname else ""
-    port = str(parsed.port) if parsed.port else ""
-    user = parsed.username if parsed.username else ""
-    pw = parsed.password if parsed.password else ""
-    query = dict(parse_qsl(parsed.query))
-    normalized_query = urlencode(sorted(query.items()))
-    normalized = urlunsplit((scheme, f"{user}:{pw}@{netloc}:{port}", parsed.path, normalized_query, parsed.fragment))
-    return hashlib.md5(normalized.encode()).hexdigest()
+    p = urlsplit(uri)
+    scheme = p.scheme.lower()
+    host = (p.hostname or "").lower()
+    port = p.port or 443
+    base = f"{scheme}://{host}:{port}{p.path}"
+    return hashlib.md5(base.encode()).hexdigest()
 
 def is_valid_node(uri):
     if len(uri) < 20 or "://" not in uri: return False
@@ -256,13 +249,11 @@ def is_valid_node(uri):
 def extract_nodes(text, depth=0):
     if not text or len(text) < 20: return []
     found = []
-    # 优先扫描协议
-    for _, pattern in PROTO_PATTERNS.items():
-        matches = pattern.findall(text)
-        for m in matches:
-            if is_valid_node(m): found.append(m)
-    # 再扫描 Base64
-    if depth < MAX_RECURSION:
+    # 策略：先协议扫描，Base64 作为 Fallback
+    matches = PROTO_REGEX.findall(text)
+    for m in matches:
+        if is_valid_node(m): found.append(m)
+    if depth < MAX_RECURSION and (len(found) == 0 or "://" not in text):
         b64_matches = re.findall(r'(?:[A-Za-z0-9+/]{4}){10,}', text)
         for b64 in b64_matches[:50]:
             with memo_lock:
