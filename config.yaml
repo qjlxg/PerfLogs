@@ -4,22 +4,8 @@
 
 # 搜索与过滤逻辑：定义爬虫在 GitHub Gist 搜索时的意图关键词
 search_keywords:
-  # include: 包含策略，命中这些关键词的文件会被优先纳入采集范围
-  include: 
-    # 1. 强制文件名匹配：定义了常见的节点配置文件后缀与名称
-    - "config.yml"
-    - "config.yaml"
-    - "proxies.yml"
-    - "proxies.yaml"
-    - "nodes.yml"
-    - "nodes.yaml"
-    - "sub.yml"
-    - "sub.yaml"
-    - ".yml"
-    - ".yaml"
-    - ".json"
-    - "proxies:- name:"
-
+  include: []  # 先清空测试
+  exclude: []
     # 2. 核心协议与技术栈：针对特定技术协议的关键字
     - "vless"
     - "reality"
@@ -54,24 +40,8 @@ search_keywords:
     - "test node"
     
 
-  # exclude: 机场特征过滤，剔除大规模机场订阅或垃圾信息以提升采集质量
-  exclude:
-    - "免费"
-    - "机场"
-    - "节点汇总"
-    - "每日更新"
-    - "订阅链接"
-    - "全部节点"
-    - "合集"
-    - "202[3456]"
-    - "password-protected"
-    - "deprecated"
-    - "archive"
-    - "v2ray-nodes"
-    - "proxy-list"
-    - "subscribe-list"
-    - "all-nodes"
-
+  
+ 
 
 # 身份与安全过滤：防垃圾、防恶意源或重复文件过滤
 filters:
