@@ -1,34 +1,81 @@
 # ==============================================================================
 # Gist 节点爬虫配置文件 (config.yaml)
-# 作用：定义 GitHub Gist 的搜索关键词、安全过滤规则及节点测速行为
 # ==============================================================================
 
-# 1. 搜索与过滤逻辑：定义爬虫在 GitHub Gist 搜索时的意图
+# 搜索与过滤逻辑：定义爬虫在 GitHub Gist 搜索时的意图关键词
 search_keywords:
-  # include (包含策略)：若填入关键词，只有命中这些词的 Gist 才会被扫描。
-  # 建议：保持目前的核心协议词，不要放入 clash/sub/mihomo 等过于宽泛的词，避免与黑名单冲突。
+  # include: 包含策略，命中这些关键词的文件会被优先纳入采集范围
   include: 
-    - "vless"
-    - "hysteria2"
-    - "tuic"
-    - "anytls"
+    # 1. 强制文件名匹配：定义了常见的节点配置文件后缀与名称
+    - "config.yml"
+    - "config.yaml"
+    - "proxies.yml"
+    - "proxies.yaml"
+    - "nodes.yml"
+    - "nodes.yaml"
+    - "sub.yml"
+    - "sub.yaml"
+    - ".yml"
+    - ".yaml"
+    - ".json"
     - "proxies:- name:"
 
-  # exclude (排除策略)：剔除带有这些词的标题或描述，用于排除广告和过时信息。
-  # 注意：不要在此放入协议关键词 (如 vless, clash)，否则会直接过滤掉目标节点。
+    # 2. 核心协议与技术栈：针对特定技术协议的关键字
+    - "vless"
+    - "reality"
+    - "hysteria2"
+    - "hy2"
+    - "tuic"
+    - "anytls"
+    - "sing-box"
+    - "xray"
+    - "mihomo"
+    - "clash"
+    - "raw"
+    - "base64"
+
+    # 3. 中文个人分享词：用于捕捉个人自用或小众分享的节点
+    - "备用"
+    - "自建"
+    - "测试"
+    - "个人"
+    - "私用"
+    - "分享"
+    - "自用"
+    - "订阅"
+    - "节点"
+
+    # 4. 英文个人分享词：扩大对海外个人技术博主节点的覆盖
+    - "personal"
+    - "private"
+    - "self-hosted"
+    - "my node"
+    - "my config"
+    - "test node"
+    
+
+  # exclude: 机场特征过滤，剔除大规模机场订阅或垃圾信息以提升采集质量
   exclude:
     - "免费"
     - "机场"
+    - "节点汇总"
     - "每日更新"
     - "订阅链接"
+    - "全部节点"
     - "合集"
-    - "archive"
-    - "deprecated"
+    - "202[3456]"
     - "password-protected"
+    - "deprecated"
+    - "archive"
+    - "v2ray-nodes"
+    - "proxy-list"
+    - "subscribe-list"
+    - "all-nodes"
 
-# 2. 身份与安全过滤：防垃圾、防恶意源或重复文件过滤
+
+# 身份与安全过滤：防垃圾、防恶意源或重复文件过滤
 filters:
-  # exclude_owners (作者黑名单)：过滤已知的垃圾源账号。
+  # exclude_owners: 黑名单列表 (作者)，过滤已知的垃圾源或被滥用的账号
   exclude_owners: 
     - "yipei-z"
     - "taokun790-lab"
@@ -40,18 +87,18 @@ filters:
     - "masomeestid-png"
     - "thatisaproper"
     - "j80547013-max"
-    - "1009476063"
-    - "irancotton"
-    - "DartBS"
+    - " 1009476063"
 
-  # exclude_files (文件名黑名单)：若文件名包含这些关键词，文件将被跳过。
-  # 注意：这里仅包含明确的非核心节点文件，保留了 clash/sub 等关键字以便脚本能正常抓取有效源。
+  # exclude_files: 文件名关键词黑名单 (只要包含以下字符串即会被排除)
   exclude_files: 
-    - "ad-list"
-    - "junk"
-    - "readme"
+    - "clash"
+    - "all"
+    - "clash-config"
+    - "Alvin9999"
+    - "mihomo"
+    - "sub"
 
-# 3. 协议支持：脚本在读取文件内容时，只会提取以这些前缀开头的行
+# 协议支持：明确脚本解析的节点协议前缀
 protocols: 
   - "vless://"
   - "hy2://"
@@ -60,21 +107,24 @@ protocols:
   - "tuic://"
   - "anytls://"
 
-# 4. 性能与扫描范围设置
+# 性能与扫描范围设置
 settings:
-  max_file_size_mb: 5       # 单个文件体积上限，防止超大文件占用内存
-  max_workers: 15           # 并发线程数，决定请求速度
-  gist_pages: 188            # 搜索页数，页数越大覆盖的 Gist 越多 (注意 GitHub API 频率限制)
-  timeout_seconds: 20       # 请求超时阈值
-  small_source_limit: 6     # 小源节点阈值，用于辅助剔除无效源
+  max_file_size_mb: 5       # 单个文件采集最大体积，防止过大文件浪费流量
+  max_workers: 15           # 并发线程数，决定同时请求多个 URL 的速度
+  gist_pages: 38            # 搜索页数，决定 GitHub API 抓取覆盖范围
+  timeout_seconds: 20       # 请求超时阈值，防止死锁
+  small_source_limit: 6     # 小源节点阈值，辅助评分逻辑
 
-# 5. 代理组测速设置：该参数直接写入最终生成的 Clash 配置文件
+# 代理组测速设置：该参数会直接写入 Clash 配置文件中供本地客户端使用
 proxy_group_settings:
-  # 基础测速地址：通过 204 响应检测连通性，响应快且不消耗用户流量
+  # 通用测速目标：用于基础连通性测试 (204 响应速度快且不耗流量)
   url_test_url: "http://cp.cloudflare.com/generate_204"
-  # AI 业务专用测速地址：用于验证节点是否支持 ChatGPT 等服务
+  # 特定业务测速目标：用于针对 ChatGPT 等 AI 服务的可用性测试
   ai_optimize_url: "https://chatgpt.com"
-  # interval (测速间隔)：单位秒，设备后台每 10 分钟自动对节点进行一次延迟测试
+
+  # interval (测速间隔)：设备后台每隔 600 秒（10 分钟）对所有节点发起一次延迟测试
   interval: 600    
-  # tolerance (容差)：单位毫秒，若测速差异在 50ms 内，客户端将维持当前节点以防止跳动
+
+  # tolerance (容差)：测速结果允许的偏差范围 (50ms)
+  # 若测速差异小于 50ms，客户端将不会频繁切换节点，有效防止网络波动导致的频繁掉线
   tolerance: 50
