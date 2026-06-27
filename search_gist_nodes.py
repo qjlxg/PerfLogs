@@ -240,7 +240,9 @@ def core_hash(uri):
     query = dict(parse_qsl(parsed.query))
     uuid = parsed.username or ""
     sni = query.get("sni", "")
-    normalized = f"{scheme}|{netloc}|{port}|{uuid}|{sni}"
+    alpn = query.get("alpn", "")
+    auth = query.get("auth", "")
+    normalized = f"{scheme}|{netloc}|{port}|{uuid}|{sni}|{alpn}|{auth}"
     return hashlib.md5(normalized.encode()).hexdigest()
 
 def is_valid_node(uri):
