@@ -1,36 +1,14 @@
+# ==============================================================================
+# Gist 节点爬虫配置文件 (config.yaml)
+# ==============================================================================
+
+# 搜索与过滤逻辑
 search_keywords:
-  # include 为空，表示不强制筛选
+  # include 为空，表示不强制筛选，抓取所有 Gist
   include: []
   
-  # exclude 必须包含所有你想排除的词，且列表项必须在 exclude 下方正确缩进
+  # exclude 中仅包含真正的黑名单词汇（机场、合集等）
   exclude:
-    - "vless"
-    - "reality"
-    - "hysteria2"
-    - "hy2"
-    - "tuic"
-    - "anytls"
-    - "sing-box"
-    - "xray"
-    - "mihomo"
-    - "clash"
-    - "raw"
-    - "base64"
-    - "备用"
-    - "自建"
-    - "测试"
-    - "个人"
-    - "私用"
-    - "分享"
-    - "自用"
-    - "订阅"
-    - "节点"
-    - "personal"
-    - "private"
-    - "self-hosted"
-    - "my node"
-    - "my config"
-    - "test node"
     - "免费"
     - "机场"
     - "节点汇总"
@@ -46,3 +24,54 @@ search_keywords:
     - "proxy-list"
     - "subscribe-list"
     - "all-nodes"
+
+# 身份与安全过滤
+filters:
+  # exclude_owners: 黑名单列表 (作者)
+  exclude_owners: 
+    - "yipei-z"
+    - "taokun790-lab"
+    - "healertiny"
+    - "maksimsteam2611-alt"
+    - "wtorm321-jpg"
+    - "bluesyoung-web"
+    - "nina-17"
+    - "HEALERtiny"
+    - "masomeestid-png"
+    - "thatisaproper"
+    - "j80547013-max"
+    - "1009476063"
+    - "irancotton"
+
+  # exclude_files: 文件名关键词黑名单
+  exclude_files: 
+    - "clash"
+    - "all"
+    - "clash-config"
+    - "Alvin9999"
+    - "mihomo"
+    - "sub"
+
+# 协议支持：明确脚本解析的节点协议前缀
+protocols: 
+  - "vless://"
+  - "hy2://"
+  - "hysteria://"
+  - "hysteria2://"
+  - "tuic://"
+  - "anytls://"
+
+# 性能与扫描范围设置
+settings:
+  max_file_size_mb: 5       # 单个文件采集最大体积
+  max_workers: 15           # 并发线程数
+  gist_pages: 38            # 搜索页数
+  timeout_seconds: 20       # 请求超时阈值
+  small_source_limit: 6     # 小源节点阈值
+
+# 代理组测速设置
+proxy_group_settings:
+  url_test_url: "http://cp.cloudflare.com/generate_204"
+  ai_optimize_url: "https://chatgpt.com"
+  interval: 600    
+  tolerance: 50
