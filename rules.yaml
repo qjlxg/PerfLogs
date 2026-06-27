@@ -2,39 +2,26 @@
 # Proxy Groups
 # =========================
 proxy-groups:
-  - name: "手动切换"
-    type: select
-    proxies:
-      - "我的VPS"
-      - "我的VPS-中转"
-      - DIRECT
-
   - name: "自动优选"
     type: url-test
     url: http://www.gstatic.com/generate_204
     interval: 300
     tolerance: 50
-    proxies:
-      - "手动切换"
+    proxies: [] 
 
-# === 新增：AI 业务专用测速组 ===
   - name: "AI 优选"
     type: url-test
     url: https://chatgpt.com
     interval: 600
     tolerance: 50
- 
-    proxies:
-      - "我的VPS"
-      - "我的VPS-中转"
+    proxies: [] 
 
   - name: "节点选择"
     type: select
     proxies:
       - "自动优选"
-      - "AI 优选"    # 将 AI 优选加入节点选择列表
-      - "手动切换"
-      - DIRECT
+      - "AI 优选"
+      - "DIRECT"
 
 # =========================
 # 安全与性能配置
