@@ -23,7 +23,7 @@ def load_config():
     if os.path.exists("config.yaml"):
         with open("config.yaml", "r", encoding="utf-8") as f:
             return yaml.safe_load(f)
-    return {"settings": {"max_file_size_mb": 5, "timeout_seconds": 20, "gist_pages": 1}, "filters": {"exclude_equals": [], "exclude_contains": [], "exclude_owners": []}, "protocols": ["vless", "hysteria2", "hy2", "anytls", "hysteria", "tuic"]}
+    return {"settings": {"max_file_size_mb": 5, "timeout_seconds": 20, "gist_pages": 10}, "filters": {"exclude_equals": [], "exclude_contains": [], "exclude_owners": []}, "protocols": ["vless", "hysteria2", "hy2", "anytls", "hysteria", "tuic"]}
 
 # 加载静态规则配置文件 (rules.yaml)
 def load_rules_config():
