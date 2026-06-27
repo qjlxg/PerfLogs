@@ -8,7 +8,6 @@ import hashlib
 import base64
 import logging
 import copy
-import sys
 from datetime import datetime, timezone, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import unquote, parse_qsl, urlsplit
@@ -24,9 +23,7 @@ def load_config():
     if os.path.exists("config.yaml"):
         with open("config.yaml", "r", encoding="utf-8") as f:
             return yaml.safe_load(f)
-    else:
-        logging.error("config.yaml not found. Exiting.")
-        sys.exit(1)
+    return {"settings": {"max_file_size_mb": 5, "timeout_seconds": 20, "gist_pages": 1}, "filters": {"exclude_equals": [], "exclude_contains": [], "exclude_owners": []}, "protocols": ["vless", "hysteria2", "hy2", "anytls", "hysteria", "tuic"]}
 
 # 加载静态规则配置文件 (rules.yaml)
 def load_rules_config():
@@ -64,7 +61,7 @@ EXCLUDE_CONTAINS = {f.lower() for f in config["filters"].get("exclude_contains",
 EXCLUDE_OWNERS = {o.lower() for o in config["filters"].get("exclude_owners", [])}
 
 # 严格限定支持的协议
-SUPPORTED_PROTOCOLS = config.get("protocols", ["vless", "hysteria2", "hy2", "anytls", "hysteria", "tuic"])
+SUPPORTED_PROTOCOLS = ["vless", "hysteria2", "hy2", "anytls", "hysteria", "tuic"]
 ALLOWED_PROTOCOLS = set(SUPPORTED_PROTOCOLS)
 
 PROTO_PATTERNS = {
@@ -189,13 +186,16 @@ class NodeManager:
         clash_proxies = [node for uri in raw_data if (node := parse_uri_to_clash(uri)) and is_valid_clash_node(node)]
         scraped_names = [p["name"] for p in clash_proxies]
 
+        # 深度复制规则配置
         yaml_data = copy.deepcopy(rules_config)
         
+        # 注入节点到 proxy-groups 中的 "自动优选"
         proxy_groups = yaml_data.get("proxy-groups", [])
         for group in proxy_groups:
-            if group.get("name") in ["自动优选", "AI 优选"]:
+            if group.get("name") == "自动优选":
                 group["proxies"] = scraped_names
         
+        # 设置基础信息
         yaml_data["proxies"] = clash_proxies
 
         beijing_time = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S")
@@ -237,15 +237,10 @@ def core_hash(uri):
     if not uri or "://" not in uri: return None
     uri = uri.replace("hy2://", "hysteria2://")
     parsed = urlsplit(uri)
-    scheme = parsed.scheme.lower()
-    netloc = parsed.hostname or ""
-    port = parsed.port or "443"
+    netloc = parsed.hostname if parsed.hostname else ""
     query = dict(parse_qsl(parsed.query))
-    uuid = parsed.username or ""
-    sni = query.get("sni", "")
-    alpn = query.get("alpn", "")
-    auth = query.get("auth", "")
-    normalized = f"{scheme}|{netloc}|{port}|{uuid}|{sni}|{alpn}|{auth}"
+    normalized_query = '&'.join(f'{k}={v}' for k, v in sorted(query.items()))
+    normalized = f"{parsed.scheme}://{netloc}{parsed.path}?{normalized_query}"
     return hashlib.md5(normalized.encode()).hexdigest()
 
 def is_valid_node(uri):
