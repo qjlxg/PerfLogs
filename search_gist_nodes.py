@@ -8,6 +8,7 @@ import hashlib
 import base64
 import logging
 import copy
+import sys
 from datetime import datetime, timezone, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import unquote, parse_qsl, urlsplit
@@ -23,7 +24,9 @@ def load_config():
     if os.path.exists("config.yaml"):
         with open("config.yaml", "r", encoding="utf-8") as f:
             return yaml.safe_load(f)
-    return {"settings": {"max_file_size_mb": 5, "timeout_seconds": 20, "gist_pages": 88}, "filters": {"exclude_equals": [], "exclude_contains": [], "exclude_owners": []}, "protocols": ["vless", "hysteria2", "hy2", "anytls", "hysteria", "tuic"]}
+    else:
+        logging.error("config.yaml not found. Exiting.")
+        sys.exit(1)
 
 # 加载静态规则配置文件 (rules.yaml)
 def load_rules_config():
@@ -61,7 +64,7 @@ EXCLUDE_CONTAINS = {f.lower() for f in config["filters"].get("exclude_contains",
 EXCLUDE_OWNERS = {o.lower() for o in config["filters"].get("exclude_owners", [])}
 
 # 严格限定支持的协议
-SUPPORTED_PROTOCOLS = ["vless", "hysteria2", "hy2", "anytls", "hysteria", "tuic"]
+SUPPORTED_PROTOCOLS = config.get("protocols", ["vless", "hysteria2", "hy2", "anytls", "hysteria", "tuic"])
 ALLOWED_PROTOCOLS = set(SUPPORTED_PROTOCOLS)
 
 PROTO_PATTERNS = {
