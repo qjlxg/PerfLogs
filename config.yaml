@@ -84,6 +84,7 @@ filters:
     - "wtorm321-jpg"
     - "bluesyoung-web"
     - "nina-17"
+    - "HEALERtiny"
     - "masomeestid-png"
     - "thatisaproper"
     - "j80547013-max"
@@ -97,6 +98,7 @@ filters:
     - "Alvin9999"
     - "mihomo"
     - "sub"
+    
 
 # 协议支持：明确脚本解析的节点协议前缀
 protocols: 
