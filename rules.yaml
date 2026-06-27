@@ -1,5 +1,5 @@
 # =========================
-# Proxy Groups（稳定生产版）
+# Proxy Groups（防丢组终极版）
 # =========================
 proxy-groups:
 
@@ -8,14 +8,20 @@ proxy-groups:
     url: http://www.gstatic.com/generate_204
     interval: 300
     tolerance: 60
-    proxies: []
+
+    # 🔥关键：必须有占位，否则部分客户端直接吞组
+    proxies:
+      - "DIRECT"
 
   - name: "AI专线"
     type: url-test
     url: https://cp.cloudflare.com/generate_204
     interval: 600
     tolerance: 30
-    proxies: []
+
+    # 🔥关键：防空组
+    proxies:
+      - "DIRECT"
 
   - name: "备用节点"
     type: select
@@ -25,7 +31,7 @@ proxy-groups:
       - "DIRECT"
 
 # =========================
-# 基础控制
+# 基础控制（防订阅覆盖增强）
 # =========================
 external-controller: 127.0.0.1:9090
 secret: "CHANGE_ME_STRONG_PASSWORD"
@@ -35,7 +41,7 @@ geo-auto-update: true
 geo-update-interval: 24
 
 # =========================
-# DNS（大陆稳定最终优化）
+# DNS（稳定版）
 # =========================
 dns:
   enable: true
@@ -52,7 +58,6 @@ dns:
     - "*.market.xiaomi.com"
     - "dns.msftncsi.com"
 
-  # 国内DNS优先（核心）
   default-nameserver:
     - 223.5.5.5
     - 119.29.29.29
@@ -66,7 +71,6 @@ dns:
       - 223.5.5.5
       - 119.29.29.29
 
-  # 国际DNS仅兜底（防污染）
   fallback:
     - https://1.1.1.1/dns-query
     - https://dns.google/dns-query
@@ -76,20 +80,17 @@ dns:
     geoip-code: CN
     geosite: [gfw]
     domain:
-      # 核心 AI 服务（API 域名通常是 DNS 污染重灾区）
       - +.openai.com
       - +.chatgpt.com
       - +.claude.ai
       - +.anthropic.com
-      # GitHub（GitHub API 经常被干扰，必须强制 fallback）
       - +.github.com
       - +.githubusercontent.com
-      # 核心搜索引擎（解决 Google/Bing 搜索时的 IP 归属地问题）
       - +.google.com
       - +.bing.com
 
 # =========================
-# Rule Providers（稳定版）
+# Rule Providers（稳定）
 # =========================
 rule-providers:
 
@@ -157,45 +158,34 @@ rule-providers:
     interval: 43200
 
 # =========================
-# Rules（最终稳定分流逻辑）
+# Rules（稳定分流）
 # =========================
 rules:
 
-  # 1. UDP优化（可选关闭，默认保守）
-  # - AND,((NETWORK,UDP),(DST-PORT,443)),REJECT
-
-  # 2. 内网优先
   - RULE-SET,private,DIRECT
   - RULE-SET,lancidr,DIRECT
 
-  # 3. 国内流量直连（关键）
   - GEOIP,CN,DIRECT
   - GEOIP,LAN,DIRECT
 
-  # 4. 广告拦截
   - GEOSITE,category-ads-all,REJECT
   - RULE-SET,reject,REJECT
 
-  # 5. 国内服务
   - DOMAIN-SUFFIX,steamchina.com,DIRECT
   - DOMAIN-SUFFIX,steamcommunity.com,DIRECT
   - DOMAIN-KEYWORD,steamcontent,DIRECT
 
-  # 6. Apple国内优化
   - RULE-SET,apple,DIRECT
 
-  # 7. AI专线强制走高质量节点
   - DOMAIN-SUFFIX,openai.com,AI专线
   - DOMAIN-SUFFIX,chatgpt.com,AI专线
   - DOMAIN-SUFFIX,claude.ai,AI专线
   - DOMAIN-SUFFIX,anthropic.com,AI专线
   - DOMAIN-SUFFIX,bing.com,AI专线
 
-  # 8. 外网低延迟组
   - RULE-SET,google,低延迟
   - RULE-SET,gfw,低延迟
   - RULE-SET,proxy,低延迟
   - DOMAIN-SUFFIX,githubusercontent.com,低延迟
 
-  # 9. 默认兜底
   - MATCH,低延迟
