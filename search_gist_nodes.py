@@ -9,9 +9,10 @@ import base64
 import logging
 import copy
 import sys
+import collections
 from datetime import datetime, timezone, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from urllib.parse import unquote, parse_qsl, urlsplit
+from urllib.parse import unquote, parse_qsl, urlsplit, parse_qs
 from collections import deque
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -66,10 +67,8 @@ MAX_RECURSION = 3
 MAX_TEXT_SIZE = 1024 * 1024
 
 TOKEN = os.getenv("GH_TOKEN")
-# 兼容旧逻辑：将配置文件中的 exclude_files 映射到旧的变量名
 EXCLUDE_EQUALS = {f.lower() for f in config["filters"].get("exclude_equals", [])}
 EXCLUDE_CONTAINS = {f.lower() for f in config["filters"].get("exclude_contains", [])}
-# 关键修复：合并 exclude_files 到 exclude_contains 以确保逻辑生效
 EXCLUDE_CONTAINS.update({f.lower() for f in config["filters"].get("exclude_files", [])})
 EXCLUDE_OWNERS = {o.lower() for o in config["filters"].get("exclude_owners", [])}
 SEARCH_INCLUDE = [str(k).lower() for k in config.get("search_keywords", {}).get("include", [])]
@@ -84,6 +83,9 @@ PROTO_PATTERNS = {
 }
 
 thread_local = threading.local()
+# 优化：使用 OrderedDict 进行 LRU 缓存去重
+memo_b64 = collections.OrderedDict()
+memo_lock = threading.Lock()
 
 def is_valid_clash_node(node):
     if not node: return False
@@ -195,8 +197,8 @@ class NodeManager:
         os.replace(SOURCE_HISTORY_FILE + ".tmp", SOURCE_HISTORY_FILE)
 
 manager = NodeManager()
-memo_lock, stats_lock, api_semaphore = threading.Lock(), threading.Lock(), threading.Semaphore(12)
-memo_b64_queue, memo_b64_set, stats_data = deque(maxlen=MAX_MEMO_B64), set(), {}
+stats_lock, api_semaphore = threading.Lock(), threading.Semaphore(12)
+stats_data = {}
 
 def get_session():
     if not hasattr(thread_local, "session"):
@@ -210,11 +212,20 @@ def score_nodes(count, url):
     return (10 if count <= 2 else 5 if count <= 10 else 1) + (1 if "gist" in url else 0)
 
 def core_hash(uri):
+    """优化后的 Hash：包含 uuid/username 和 sni"""
     if not uri or "://" not in uri: return None
-    uri = uri.replace("hy2://", "hysteria2://")
-    parsed = urlsplit(uri)
-    normalized = f"{parsed.scheme.lower()}://{parsed.hostname or ''}:{parsed.port or (443 if parsed.scheme.lower() == 'vless' else 0)}"
-    return hashlib.md5(normalized.encode()).hexdigest()
+    try:
+        uri = uri.replace("hy2://", "hysteria2://")
+        parsed = urlsplit(uri)
+        query = parse_qs(parsed.query)
+        scheme = parsed.scheme.lower()
+        host = parsed.hostname or ""
+        port = parsed.port or (443 if scheme == 'vless' else 0)
+        uuid = parsed.username or ""
+        sni = query.get("sni", [""])[0]
+        normalized = f"{scheme}|{host}|{port}|{uuid}|{sni}"
+        return hashlib.md5(normalized.encode()).hexdigest()
+    except: return None
 
 def is_valid_node(uri):
     if len(uri) < 20 or "://" not in uri: return False
@@ -224,22 +235,26 @@ def is_valid_node(uri):
     return True
 
 def extract_nodes(text, depth=0):
-    if not text or len(text) < 20: return []
+    # 优化：快速过滤
+    if not text or ("://" not in text and "base64" not in text.lower()): return []
+    if len(text) < 20: return []
+    
     found = []
     if depth < MAX_RECURSION:
         b64_matches = re.findall(r'(?:[A-Za-z0-9+/]{4}){10,}', text)
         for b64 in b64_matches[:50]:
             with memo_lock:
-                if b64 in memo_b64_set: continue
-                if len(memo_b64_queue) == MAX_MEMO_B64: memo_b64_set.remove(memo_b64_queue.popleft())
-                memo_b64_queue.append(b64); memo_b64_set.add(b64)
+                if b64 in memo_b64: continue
+                memo_b64[b64] = True
+                if len(memo_b64) > MAX_MEMO_B64: memo_b64.popitem(last=False)
             try:
                 decoded = base64.b64decode(b64 + '=' * (-len(b64) % 4)).decode('utf-8', errors='ignore')
                 if "://" in decoded: found.extend(extract_nodes(decoded, depth + 1))
             except: pass
+    
+    # 优化：正则提取
     for _, pattern in PROTO_PATTERNS.items():
-        for m in pattern.findall(text):
-            if is_valid_node(m): found.append(m)
+        found.extend([m for m in pattern.findall(text) if is_valid_node(m)])
     return found[:MAX_PER_LAYER]
 
 def process_raw(raw_url):
