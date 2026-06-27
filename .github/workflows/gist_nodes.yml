@@ -77,9 +77,8 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-          # 确保将所有生成的文件纳入提交
-          git add clash_test.yaml all_nodes.yaml temp_log.yaml all_nodes.dat gist_stats.csv source_history.csv active_raw_urls.txt 2>/dev/null || true
-          
+         
+          git add .
         
           if git diff --staged --quiet; then
             echo "No changes detected. Generating heartbeat."
@@ -87,9 +86,9 @@ jobs:
             git add .heartbeat
           fi
 
-          # 提交并推送到主分支，强制指定时区为 CST (北京时间)
+          
           TZ='Asia/Shanghai' git commit -m "chore: auto-sync nodes $(date +'%Y-%m-%d %H:%M:%S')"
           
-          # 增加冲突处理机制
-          git pull --rebase origin main || (git rebase --abort && exit 1)
-          git push origin HEAD:main
+
+          git fetch origin main
+          git rebase origin/main
