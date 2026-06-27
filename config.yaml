@@ -88,7 +88,8 @@ filters:
     - "masomeestid-png"
     - "thatisaproper"
     - "j80547013-max"
-    - " 1009476063"
+    - "1009476063"
+    - "irancotton"
 
   # exclude_files: 文件名关键词黑名单 (只要包含以下字符串即会被排除)
   exclude_files: 
