@@ -186,16 +186,13 @@ class NodeManager:
         clash_proxies = [node for uri in raw_data if (node := parse_uri_to_clash(uri)) and is_valid_clash_node(node)]
         scraped_names = [p["name"] for p in clash_proxies]
 
-        # 深度复制规则配置
         yaml_data = copy.deepcopy(rules_config)
         
-        # 注入节点到 proxy-groups 中的 "自动优选"
         proxy_groups = yaml_data.get("proxy-groups", [])
         for group in proxy_groups:
             if group.get("name") == "自动优选":
                 group["proxies"] = scraped_names
         
-        # 设置基础信息
         yaml_data["proxies"] = clash_proxies
 
         beijing_time = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S")
@@ -237,10 +234,13 @@ def core_hash(uri):
     if not uri or "://" not in uri: return None
     uri = uri.replace("hy2://", "hysteria2://")
     parsed = urlsplit(uri)
-    netloc = parsed.hostname if parsed.hostname else ""
+    scheme = parsed.scheme.lower()
+    netloc = parsed.hostname or ""
+    port = parsed.port or "443"
     query = dict(parse_qsl(parsed.query))
-    normalized_query = '&'.join(f'{k}={v}' for k, v in sorted(query.items()))
-    normalized = f"{parsed.scheme}://{netloc}{parsed.path}?{normalized_query}"
+    uuid = parsed.username or ""
+    sni = query.get("sni", "")
+    normalized = f"{scheme}|{netloc}|{port}|{uuid}|{sni}"
     return hashlib.md5(normalized.encode()).hexdigest()
 
 def is_valid_node(uri):
