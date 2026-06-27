@@ -17,10 +17,22 @@ proxy-groups:
     proxies:
       - "手动切换"
 
+# === 新增：AI 业务专用测速组 ===
+  - name: "AI 优选"
+    type: url-test
+    url: https://chatgpt.com
+    interval: 600
+    tolerance: 50
+ 
+    proxies:
+      - "我的VPS"
+      - "我的VPS-中转"
+
   - name: "节点选择"
     type: select
     proxies:
       - "自动优选"
+      - "AI 优选"    # 将 AI 优选加入节点选择列表
       - "手动切换"
       - DIRECT
 
