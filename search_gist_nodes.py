@@ -229,13 +229,17 @@ def score_nodes(count, url):
     return (10 if count <= 2 else 5 if count <= 10 else 1) + (1 if "gist" in url else 0)
 
 def core_hash(uri):
+    """
+    优化后的去重逻辑：只对协议、主机名、端口进行哈希，忽略路径及其他参数差异
+    """
     if not uri or "://" not in uri: return None
     uri = uri.replace("hy2://", "hysteria2://")
-    p = urlsplit(uri)
-    scheme = p.scheme.lower()
-    host = (p.hostname or "").lower()
-    port = p.port or 443
-    base = f"{scheme}://{host}:{port}{p.path}"
+    parsed = urlsplit(uri)
+    scheme = parsed.scheme.lower()
+    host = (parsed.hostname or "").lower()
+    port = parsed.port or 443
+    # 核心去重因子：protocol + host + port
+    base = f"{scheme}://{host}:{port}"
     return hashlib.md5(base.encode()).hexdigest()
 
 def is_valid_node(uri):
