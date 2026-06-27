@@ -1,39 +1,41 @@
 # =========================
-# Proxy Groups
+# Proxy Groups（稳定生产版）
 # =========================
 proxy-groups:
-  - name: "自动优选"
+
+  - name: "低延迟"
     type: url-test
     url: http://www.gstatic.com/generate_204
     interval: 300
-    tolerance: 50
-    proxies: [] 
+    tolerance: 60
+    proxies: []
 
-  - name: "AI 优选"
+  - name: "AI专线"
     type: url-test
-    url: https://chatgpt.com
+    url: https://cp.cloudflare.com/generate_204
     interval: 600
-    tolerance: 50
-    proxies: [] 
+    tolerance: 30
+    proxies: []
 
-  - name: "节点选择"
+  - name: "备用节点"
     type: select
     proxies:
-      - "自动优选"
-      - "AI 优选"
+      - "低延迟"
+      - "AI专线"
       - "DIRECT"
 
 # =========================
-# 安全与性能配置
+# 基础控制
 # =========================
 external-controller: 127.0.0.1:9090
 secret: "CHANGE_ME_STRONG_PASSWORD"
+
 geodata-mode: true
 geo-auto-update: true
 geo-update-interval: 24
 
 # =========================
-# DNS（生产级优化）
+# DNS（大陆稳定最终优化）
 # =========================
 dns:
   enable: true
@@ -42,17 +44,18 @@ dns:
   fake-ip-range: 198.18.0.1/16
   use-hosts: true
   respect-rules: true
-  query-timeout: 5
+  query-timeout: 3
+
   fake-ip-filter:
     - "*.lan"
     - "*.local"
     - "*.market.xiaomi.com"
     - "dns.msftncsi.com"
 
+  # 国内DNS优先（核心）
   default-nameserver:
     - 223.5.5.5
     - 119.29.29.29
-    - 114.114.114.114
 
   nameserver:
     - https://dns.alidns.com/dns-query
@@ -60,13 +63,13 @@ dns:
 
   nameserver-policy:
     "geosite:cn":
-      - https://dns.alidns.com/dns-query
-      - https://doh.pub/dns-query
+      - 223.5.5.5
+      - 119.29.29.29
 
+  # 国际DNS仅兜底（防污染）
   fallback:
-    - https://dns.google/dns-query
     - https://1.1.1.1/dns-query
-    - https://dns.quad9.net/dns-query
+    - https://dns.google/dns-query
 
   fallback-filter:
     geoip: true
@@ -75,86 +78,121 @@ dns:
     domain:
       - +.google.com
       - +.youtube.com
-      - +.facebook.com
       - +.github.com
+      - +.openai.com
+      - +.chatgpt.com
+      - +.claude.ai
+      - +.microsoft.com
       - +.twitter.com
 
 # =========================
-# Rule Providers
+# Rule Providers（稳定版）
 # =========================
 rule-providers:
+
   reject:
     type: http
     behavior: domain
     url: https://ghproxy.net/https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/reject.txt
     path: ./ruleset/reject.yaml
-    interval: 86400
+    interval: 43200
+
   proxy:
     type: http
     behavior: domain
     url: https://ghproxy.net/https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/proxy.txt
     path: ./ruleset/proxy.yaml
-    interval: 86400
+    interval: 43200
+
   direct:
     type: http
     behavior: domain
     url: https://ghproxy.net/https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/direct.txt
     path: ./ruleset/direct.yaml
-    interval: 86400
+    interval: 43200
+
   gfw:
     type: http
     behavior: domain
     url: https://ghproxy.net/https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/gfw.txt
     path: ./ruleset/gfw.yaml
-    interval: 86400
+    interval: 43200
+
   private:
     type: http
     behavior: domain
     url: https://ghproxy.net/https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/private.txt
     path: ./ruleset/private.yaml
-    interval: 86400
+    interval: 43200
+
   apple:
     type: http
     behavior: domain
     url: https://ghproxy.net/https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/apple.txt
     path: ./ruleset/apple.yaml
-    interval: 86400
+    interval: 43200
+
   google:
     type: http
     behavior: domain
     url: https://ghproxy.net/https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/google.txt
     path: ./ruleset/google.yaml
-    interval: 86400
+    interval: 43200
+
   cncidr:
     type: http
     behavior: ipcidr
     url: https://ghproxy.net/https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/cncidr.txt
     path: ./ruleset/cncidr.yaml
-    interval: 86400
+    interval: 43200
+
   lancidr:
     type: http
     behavior: ipcidr
     url: https://ghproxy.net/https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/lancidr.txt
     path: ./ruleset/lancidr.yaml
-    interval: 86400
+    interval: 43200
 
 # =========================
-# Rules（最终生产级分流）
+# Rules（最终稳定分流逻辑）
 # =========================
 rules:
-  - AND,((NETWORK,UDP),(DST-PORT,443)),REJECT
+
+  # 1. UDP优化（可选关闭，默认保守）
+  # - AND,((NETWORK,UDP),(DST-PORT,443)),REJECT
+
+  # 2. 内网优先
   - RULE-SET,private,DIRECT
   - RULE-SET,lancidr,DIRECT
-  - GEOSITE,category-ads-all,REJECT
-  - RULE-SET,reject,REJECT
-  - DOMAIN-SUFFIX,steamchina.com,DIRECT
-  - DOMAIN-KEYWORD,steamcontent,DIRECT
-  - RULE-SET,apple,DIRECT
-  - RULE-SET,google,节点选择
-  - RULE-SET,gfw,节点选择
-  - RULE-SET,proxy,节点选择
-  - DOMAIN-SUFFIX,githubusercontent.com,节点选择
-  - RULE-SET,cncidr,DIRECT
+
+  # 3. 国内流量直连（关键）
   - GEOIP,CN,DIRECT
   - GEOIP,LAN,DIRECT
-  - MATCH,节点选择
+
+  # 4. 广告拦截
+  - GEOSITE,category-ads-all,REJECT
+  - RULE-SET,reject,REJECT
+
+  # 5. 国内服务
+  - DOMAIN-SUFFIX,steamchina.com,DIRECT
+  - DOMAIN-SUFFIX,steamcommunity.com,DIRECT
+  - DOMAIN-KEYWORD,steamcontent,DIRECT
+
+  # 6. Apple国内优化
+  - RULE-SET,apple,DIRECT
+
+  # 7. AI专线强制走高质量节点
+  - DOMAIN-SUFFIX,openai.com,AI专线
+  - DOMAIN-SUFFIX,chatgpt.com,AI专线
+  - DOMAIN-SUFFIX,claude.ai,AI专线
+  - DOMAIN-SUFFIX,anthropic.com,AI专线
+  - DOMAIN-SUFFIX,bing.com,AI专线
+
+  # 8. 外网低延迟组
+  - RULE-SET,google,低延迟
+  - RULE-SET,gfw,低延迟
+  - RULE-SET,proxy,低延迟
+  - DOMAIN-SUFFIX,githubusercontent.com,低延迟
+
+  # 9. 默认兜底
+  - MATCH,低延迟
