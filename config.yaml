@@ -1,0 +1,130 @@
+# ==============================================================================
+# Gist 节点爬虫配置文件 (config.yaml)
+# ==============================================================================
+
+# 搜索与过滤逻辑：定义爬虫在 GitHub Gist 搜索时的意图关键词
+search_keywords:
+  # include: 包含策略，命中这些关键词的文件会被优先纳入采集范围
+  include: 
+    # 1. 强制文件名匹配：定义了常见的节点配置文件后缀与名称
+    - "config.yml"
+    - "config.yaml"
+    - "proxies.yml"
+    - "proxies.yaml"
+    - "nodes.yml"
+    - "nodes.yaml"
+    - "sub.yml"
+    - "sub.yaml"
+    - ".yml"
+    - ".yaml"
+    - ".json"
+    - "proxies:- name:"
+
+    # 2. 核心协议与技术栈：针对特定技术协议的关键字
+    - "vless"
+    - "reality"
+    - "hysteria2"
+    - "hy2"
+    - "tuic"
+    - "anytls"
+    - "sing-box"
+    - "xray"
+    - "mihomo"
+    - "clash"
+    - "raw"
+    - "base64"
+
+    # 3. 中文个人分享词：用于捕捉个人自用或小众分享的节点
+    - "备用"
+    - "自建"
+    - "测试"
+    - "个人"
+    - "私用"
+    - "分享"
+    - "自用"
+    - "订阅"
+    - "节点"
+
+    # 4. 英文个人分享词：扩大对海外个人技术博主节点的覆盖
+    - "personal"
+    - "private"
+    - "self-hosted"
+    - "my node"
+    - "my config"
+    - "test node"
+    
+
+  # exclude: 机场特征过滤，剔除大规模机场订阅或垃圾信息以提升采集质量
+  exclude:
+    - "免费"
+    - "机场"
+    - "节点汇总"
+    - "每日更新"
+    - "订阅链接"
+    - "全部节点"
+    - "合集"
+    - "202[3456]"
+    - "password-protected"
+    - "deprecated"
+    - "archive"
+    - "v2ray-nodes"
+    - "proxy-list"
+    - "subscribe-list"
+    - "all-nodes"
+
+
+# 身份与安全过滤：防垃圾、防恶意源或重复文件过滤
+filters:
+  # exclude_owners: 黑名单列表 (作者)，过滤已知的垃圾源或被滥用的账号
+  exclude_owners: 
+    - "yipei-z"
+    - "taokun790-lab"
+    - "healertiny"
+    - "maksimsteam2611-alt"
+    - "wtorm321-jpg"
+    - "bluesyoung-web"
+    - "nina-17"
+    - "masomeestid-png"
+    - "thatisaproper"
+    - "j80547013-max"
+    - " 1009476063"
+
+  # exclude_files: 文件名关键词黑名单 (只要包含以下字符串即会被排除)
+  exclude_files: 
+    - "clash"
+    - "all"
+    - "clash-config"
+    - "Alvin9999"
+    - "mihomo"
+    - "sub"
+
+# 协议支持：明确脚本解析的节点协议前缀
+protocols: 
+  - "vless://"
+  - "hy2://"
+  - "hysteria://"
+  - "hysteria2://"
+  - "tuic://"
+  - "anytls://"
+
+# 性能与扫描范围设置
+settings:
+  max_file_size_mb: 5       # 单个文件采集最大体积，防止过大文件浪费流量
+  max_workers: 15           # 并发线程数，决定同时请求多个 URL 的速度
+  gist_pages: 38            # 搜索页数，决定 GitHub API 抓取覆盖范围
+  timeout_seconds: 20       # 请求超时阈值，防止死锁
+  small_source_limit: 6     # 小源节点阈值，辅助评分逻辑
+
+# 代理组测速设置：该参数会直接写入 Clash 配置文件中供本地客户端使用
+proxy_group_settings:
+  # 通用测速目标：用于基础连通性测试 (204 响应速度快且不耗流量)
+  url_test_url: "http://cp.cloudflare.com/generate_204"
+  # 特定业务测速目标：用于针对 ChatGPT 等 AI 服务的可用性测试
+  ai_optimize_url: "https://chatgpt.com"
+
+  # interval (测速间隔)：设备后台每隔 600 秒（10 分钟）对所有节点发起一次延迟测试
+  interval: 600    
+
+  # tolerance (容差)：测速结果允许的偏差范围 (50ms)
+  # 若测速差异小于 50ms，客户端将不会频繁切换节点，有效防止网络波动导致的频繁掉线
+  tolerance: 50

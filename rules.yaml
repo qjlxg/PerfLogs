@@ -1,0 +1,161 @@
+# =========================
+# Proxy Groups
+# =========================
+proxy-groups:
+  - name: "手动切换"
+    type: select
+    proxies:
+      - "我的VPS"
+      - "我的VPS-中转"
+      - DIRECT
+
+  - name: "自动优选"
+    type: url-test
+    url: http://www.gstatic.com/generate_204
+    interval: 300
+    tolerance: 50
+    proxies:
+      - "手动切换"
+
+  - name: "节点选择"
+    type: select
+    proxies:
+      - "自动优选"
+      - "手动切换"
+      - DIRECT
+
+# =========================
+# 安全与性能配置
+# =========================
+external-controller: 127.0.0.1:9090
+secret: "CHANGE_ME_STRONG_PASSWORD"
+geodata-mode: true
+geo-auto-update: true
+geo-update-interval: 24
+
+# =========================
+# DNS（生产级优化）
+# =========================
+dns:
+  enable: true
+  ipv6: false
+  enhanced-mode: fake-ip
+  fake-ip-range: 198.18.0.1/16
+  use-hosts: true
+  respect-rules: true
+  query-timeout: 5
+  fake-ip-filter:
+    - "*.lan"
+    - "*.local"
+    - "*.market.xiaomi.com"
+    - "dns.msftncsi.com"
+
+  default-nameserver:
+    - 223.5.5.5
+    - 119.29.29.29
+    - 114.114.114.114
+
+  nameserver:
+    - https://dns.alidns.com/dns-query
+    - https://doh.pub/dns-query
+
+  nameserver-policy:
+    "geosite:cn":
+      - https://dns.alidns.com/dns-query
+      - https://doh.pub/dns-query
+
+  fallback:
+    - https://dns.google/dns-query
+    - https://1.1.1.1/dns-query
+    - https://dns.quad9.net/dns-query
+
+  fallback-filter:
+    geoip: true
+    geoip-code: CN
+    geosite: [gfw]
+    domain:
+      - +.google.com
+      - +.youtube.com
+      - +.facebook.com
+      - +.github.com
+      - +.twitter.com
+
+# =========================
+# Rule Providers
+# =========================
+rule-providers:
+  reject:
+    type: http
+    behavior: domain
+    url: https://ghproxy.net/https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/reject.txt
+    path: ./ruleset/reject.yaml
+    interval: 86400
+  proxy:
+    type: http
+    behavior: domain
+    url: https://ghproxy.net/https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/proxy.txt
+    path: ./ruleset/proxy.yaml
+    interval: 86400
+  direct:
+    type: http
+    behavior: domain
+    url: https://ghproxy.net/https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/direct.txt
+    path: ./ruleset/direct.yaml
+    interval: 86400
+  gfw:
+    type: http
+    behavior: domain
+    url: https://ghproxy.net/https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/gfw.txt
+    path: ./ruleset/gfw.yaml
+    interval: 86400
+  private:
+    type: http
+    behavior: domain
+    url: https://ghproxy.net/https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/private.txt
+    path: ./ruleset/private.yaml
+    interval: 86400
+  apple:
+    type: http
+    behavior: domain
+    url: https://ghproxy.net/https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/apple.txt
+    path: ./ruleset/apple.yaml
+    interval: 86400
+  google:
+    type: http
+    behavior: domain
+    url: https://ghproxy.net/https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/google.txt
+    path: ./ruleset/google.yaml
+    interval: 86400
+  cncidr:
+    type: http
+    behavior: ipcidr
+    url: https://ghproxy.net/https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/cncidr.txt
+    path: ./ruleset/cncidr.yaml
+    interval: 86400
+  lancidr:
+    type: http
+    behavior: ipcidr
+    url: https://ghproxy.net/https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/lancidr.txt
+    path: ./ruleset/lancidr.yaml
+    interval: 86400
+
+# =========================
+# Rules（最终生产级分流）
+# =========================
+rules:
+  - AND,((NETWORK,UDP),(DST-PORT,443)),REJECT
+  - RULE-SET,private,DIRECT
+  - RULE-SET,lancidr,DIRECT
+  - GEOSITE,category-ads-all,REJECT
+  - RULE-SET,reject,REJECT
+  - DOMAIN-SUFFIX,steamchina.com,DIRECT
+  - DOMAIN-KEYWORD,steamcontent,DIRECT
+  - RULE-SET,apple,DIRECT
+  - RULE-SET,google,节点选择
+  - RULE-SET,gfw,节点选择
+  - RULE-SET,proxy,节点选择
+  - DOMAIN-SUFFIX,githubusercontent.com,节点选择
+  - RULE-SET,cncidr,DIRECT
+  - GEOIP,CN,DIRECT
+  - GEOIP,LAN,DIRECT
+  - MATCH,节点选择
