@@ -3,7 +3,7 @@ name: Gist Nodes Sync
 on:
   push:
     paths:
-      - 'nodes.yaml'
+      - 'rules.yaml'
       - 'config.yaml'
       - 'search_gist_nodes.py'
       - '.github/workflows/gist_nodes.yml'
