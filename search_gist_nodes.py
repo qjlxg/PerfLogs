@@ -23,7 +23,12 @@ def load_config():
     if os.path.exists("config.yaml"):
         with open("config.yaml", "r", encoding="utf-8") as f:
             return yaml.safe_load(f)
-    return {"settings": {"max_file_size_mb": 5, "timeout_seconds": 20, "gist_pages": 10}, "filters": {"exclude_equals": [], "exclude_contains": [], "exclude_owners": []}, "protocols": ["vless", "hysteria2", "hy2", "anytls", "hysteria", "tuic"]}
+    return {
+        "settings": {"max_file_size_mb": 5, "timeout_seconds": 20, "gist_pages": 10}, 
+        "filters": {"exclude_equals": [], "exclude_contains": [], "exclude_owners": []}, 
+        "search_keywords": {"include": [], "exclude": []},
+        "protocols": ["vless", "hysteria2", "hy2", "anytls", "hysteria", "tuic"]
+    }
 
 # 加载静态规则配置文件 (rules.yaml)
 def load_rules_config():
@@ -59,6 +64,9 @@ TOKEN = os.getenv("GH_TOKEN")
 EXCLUDE_EQUALS = {f.lower() for f in config["filters"].get("exclude_equals", [])}
 EXCLUDE_CONTAINS = {f.lower() for f in config["filters"].get("exclude_contains", [])}
 EXCLUDE_OWNERS = {o.lower() for o in config["filters"].get("exclude_owners", [])}
+# 新增：搜索关键词配置
+SEARCH_INCLUDE = [str(k).lower() for k in config.get("search_keywords", {}).get("include", [])]
+SEARCH_EXCLUDE = [str(k).lower() for k in config.get("search_keywords", {}).get("exclude", [])]
 
 # 严格限定支持的协议
 SUPPORTED_PROTOCOLS = ["vless", "hysteria2", "hy2", "anytls", "hysteria", "tuic"]
@@ -231,9 +239,6 @@ def score_nodes(count, url):
     return (10 if count <= 2 else 5 if count <= 10 else 1) + (1 if "gist" in url else 0)
 
 def core_hash(uri):
-    """
-    通过仅提取协议、主机名和端口进行哈希，忽略路径及其他参数差异以实现彻底去重。
-    """
     if not uri or "://" not in uri: return None
     uri = uri.replace("hy2://", "hysteria2://")
     parsed = urlsplit(uri)
@@ -292,8 +297,21 @@ def main():
             resp = get_session().get(f"https://api.github.com/gists/public?page={page}&per_page=100", timeout=TIMEOUT)
             if resp.status_code == 200:
                 for gist in resp.json():
-                    if gist.get("owner", {}).get("login", "").lower() not in EXCLUDE_OWNERS:
-                        for f_info in gist.get("files", {}).values():
+                    desc = (gist.get("description") or "").lower()
+                    owner = gist.get("owner", {}).get("login", "").lower()
+                    
+                    if owner not in EXCLUDE_OWNERS:
+                        # 关键词过滤逻辑
+                        files = gist.get("files", {})
+                        # 检查 exclude
+                        if any(k in desc for k in SEARCH_EXCLUDE): continue
+                        
+                        # 检查 include (若有配置)
+                        if SEARCH_INCLUDE:
+                            if not any(k in desc for k in SEARCH_INCLUDE) and not any(any(k in f.lower() for k in SEARCH_INCLUDE) for f in files):
+                                continue
+
+                        for f_info in files.values():
                             raw = f_info.get("raw_url")
                             fn = f_info.get("filename", "").lower()
                             if raw and not (fn in EXCLUDE_EQUALS or any(k in fn for k in EXCLUDE_CONTAINS)): 
