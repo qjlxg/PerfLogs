@@ -76,14 +76,17 @@ dns:
     geoip-code: CN
     geosite: [gfw]
     domain:
-      - +.google.com
-      - +.youtube.com
-      - +.github.com
+      # 核心 AI 服务（API 域名通常是 DNS 污染重灾区）
       - +.openai.com
       - +.chatgpt.com
       - +.claude.ai
-      - +.microsoft.com
-      - +.twitter.com
+      - +.anthropic.com
+      # GitHub（GitHub API 经常被干扰，必须强制 fallback）
+      - +.github.com
+      - +.githubusercontent.com
+      # 核心搜索引擎（解决 Google/Bing 搜索时的 IP 归属地问题）
+      - +.google.com
+      - +.bing.com
 
 # =========================
 # Rule Providers（稳定版）
