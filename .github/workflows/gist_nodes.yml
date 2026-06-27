@@ -1,0 +1,95 @@
+name: Gist Nodes Sync
+
+on:
+  push:
+    paths:
+      - 'nodes.yaml'
+      - 'config.yaml'
+      - 'search_gist_nodes.py'
+      - '.github/workflows/gist_nodes.yml'
+  schedule:
+    - cron: '0 */1 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: gist-nodes-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  sync_and_process:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests PyYAML
+
+      - name: Run Processing Script
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          python search_gist_nodes.py
+
+      - name: Update Gist
+        env:
+          GIST_TOKEN: ${{ secrets.GH_TOKEN }}
+          GIST_ID: ${{ secrets.GIST_ID }}
+        run: |
+          python3 << 'EOF'
+          import json, os
+          files = {}
+          # 同步包含统计文件
+          for fn in ["clash_test.yaml", "all_nodes.yaml", "temp_log.yaml", "all_nodes.dat"]:
+              if os.path.exists(fn) and os.path.getsize(fn) > 0:
+                  with open(fn, "r", encoding="utf-8") as f:
+                      files[fn] = {"content": f.read()}
+          
+          if files:
+              with open("gist_payload.json", "w") as f:
+                  json.dump({"files": files}, f)
+          EOF
+
+          if [ -f gist_payload.json ]; then
+            curl -f -H "Authorization: token $GIST_TOKEN" \
+                 -H "Accept: application/vnd.github.v3+json" \
+                 -X PATCH -d @gist_payload.json \
+                 https://api.github.com/gists/$GIST_ID
+          fi
+
+      - name: Commit and Push Changes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+          # 确保将所有生成的文件纳入提交
+          git add clash_test.yaml all_nodes.yaml temp_log.yaml all_nodes.dat gist_stats.csv source_history.csv active_raw_urls.txt 2>/dev/null || true
+          
+          # 如果没有内容变更，生成一个心跳文件强制提交
+          if git diff --staged --quiet; then
+            echo "No changes detected. Generating heartbeat."
+            date > .heartbeat
+            git add .heartbeat
+          fi
+
+          # 提交并推送到主分支，强制指定时区为 CST (北京时间)
+          TZ='Asia/Shanghai' git commit -m "chore: auto-sync nodes $(date +'%Y-%m-%d %H:%M:%S')"
+          
+          # 增加冲突处理机制
+          git pull --rebase origin main || (git rebase --abort && exit 1)
+          git push origin HEAD:main
