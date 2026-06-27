@@ -63,7 +63,7 @@ protocols:
 settings:
   max_file_size_mb: 5       # 单个文件体积上限，防止超大文件占用内存
   max_workers: 15           # 并发线程数，决定请求速度
-  gist_pages: 38            # 搜索页数，页数越大覆盖的 Gist 越多 (注意 GitHub API 频率限制)
+  gist_pages: 88            # 搜索页数，页数越大覆盖的 Gist 越多 (注意 GitHub API 频率限制)
   timeout_seconds: 20       # 请求超时阈值
   small_source_limit: 6     # 小源节点阈值，用于辅助剔除无效源
 
