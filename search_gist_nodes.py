@@ -161,10 +161,9 @@ class NodeManager:
         )
         with target_lock:
             if h not in seen_set:
-                target_set.add(uri)
                 seen_set.add(h)
+                target_set.add(uri)
                 history.append(h)
-                if len(history) == 20000: seen_set.remove(history.popleft())
 
     def add_source(self, url):
         with self.source_lock: self.source_urls.add(url)
@@ -234,15 +233,16 @@ def score_nodes(count, url):
 
 def core_hash(uri):
     if not uri or "://" not in uri: return None
-    # 统一 Schema
     uri = uri.replace("hy2://", "hysteria2://")
     parsed = urlsplit(uri)
     scheme = parsed.scheme.lower()
     netloc = parsed.hostname.lower() if parsed.hostname else ""
-    # 参数排序
+    port = str(parsed.port) if parsed.port else ""
+    user = parsed.username if parsed.username else ""
+    pw = parsed.password if parsed.password else ""
     query = dict(parse_qsl(parsed.query))
     normalized_query = urlencode(sorted(query.items()))
-    normalized = urlunsplit((scheme, netloc, parsed.path, normalized_query, parsed.fragment))
+    normalized = urlunsplit((scheme, f"{user}:{pw}@{netloc}:{port}", parsed.path, normalized_query, parsed.fragment))
     return hashlib.md5(normalized.encode()).hexdigest()
 
 def is_valid_node(uri):
@@ -256,6 +256,12 @@ def is_valid_node(uri):
 def extract_nodes(text, depth=0):
     if not text or len(text) < 20: return []
     found = []
+    # 优先扫描协议
+    for _, pattern in PROTO_PATTERNS.items():
+        matches = pattern.findall(text)
+        for m in matches:
+            if is_valid_node(m): found.append(m)
+    # 再扫描 Base64
     if depth < MAX_RECURSION:
         b64_matches = re.findall(r'(?:[A-Za-z0-9+/]{4}){10,}', text)
         for b64 in b64_matches[:50]:
@@ -267,10 +273,6 @@ def extract_nodes(text, depth=0):
                 decoded = base64.b64decode(b64 + '=' * (-len(b64) % 4)).decode('utf-8', errors='ignore')
                 if "://" in decoded: found.extend(extract_nodes(decoded, depth + 1))
             except: pass
-    for _, pattern in PROTO_PATTERNS.items():
-        matches = pattern.findall(text)
-        for m in matches:
-            if is_valid_node(m): found.append(m)
     return found[:MAX_PER_LAYER]
 
 def process_raw(raw_url):
@@ -330,9 +332,11 @@ def main():
         for url in combined_urls:
             f.write(url + "\n")
 
+    file_exists = os.path.exists(STATS_FILE)
     with open(STATS_FILE, "a", encoding="utf-8", newline='') as f:
         writer = csv.writer(f)
-        writer.writerow(["url", "nodes_found"])
+        if not file_exists:
+            writer.writerow(["url", "nodes_found"])
         for url, count in stats_data.items(): writer.writerow([url, count])
     print(f"Success! Total nodes: {len(manager.nodes) + len(manager.temp_nodes)}. Sources: {len(manager.source_urls)}")
 
