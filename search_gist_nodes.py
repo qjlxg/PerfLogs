@@ -189,10 +189,10 @@ class NodeManager:
         # 深度复制规则配置
         yaml_data = copy.deepcopy(rules_config)
         
-        # 注入节点到 proxy-groups 中的 "自动优选"
+        # 注入节点到 proxy-groups 中的 "自动优选" 和 "AI 优选"
         proxy_groups = yaml_data.get("proxy-groups", [])
         for group in proxy_groups:
-            if group.get("name") == "自动优选":
+            if group.get("name") in ["自动优选", "AI 优选"]:
                 group["proxies"] = scraped_names
         
         # 设置基础信息
