@@ -53,7 +53,7 @@ jobs:
           import json, os
           files = {}
           # 同步包含统计文件
-          for fn in ["clash_test.yaml", "all_nodes.yaml", "temp_log.yaml", "all_nodes.dat"]:
+          for fn in ["clash_test.yaml", "all_nodes.yaml"]:
               if os.path.exists(fn) and os.path.getsize(fn) > 0:
                   with open(fn, "r", encoding="utf-8") as f:
                       files[fn] = {"content": f.read()}
