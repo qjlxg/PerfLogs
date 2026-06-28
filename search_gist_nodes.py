@@ -42,7 +42,6 @@ rules_config = load_rules_config()
 
 # 配置常量
 ALL_NODES_FILE = "all_nodes.yaml"
-TEMP_LOG_FILE = "temp_log.yaml"
 STATS_FILE = "gist_stats.csv"
 SOURCE_HISTORY_FILE = "source_history.csv"
 ALL_NODES_DAT = "all_nodes.dat"
@@ -60,7 +59,6 @@ EXCLUDE_EQUALS = {f.lower() for f in config["filters"].get("exclude_equals", [])
 EXCLUDE_CONTAINS = {f.lower() for f in config["filters"].get("exclude_contains", [])}
 EXCLUDE_OWNERS = {o.lower() for o in config["filters"].get("exclude_owners", [])}
 
-# 严格限定支持的协议
 SUPPORTED_PROTOCOLS = ["vless", "hysteria2", "hy2", "anytls", "hysteria", "tuic"]
 ALLOWED_PROTOCOLS = set(SUPPORTED_PROTOCOLS)
 
@@ -138,42 +136,29 @@ def parse_uri_to_clash(uri):
 class NodeManager:
     def __init__(self):
         self.nodes = set()
-        self.temp_nodes = set()
         self.source_urls = set()
         self.nodes_lock = threading.Lock()
-        self.temp_lock = threading.Lock()
         self.source_lock = threading.Lock()
-        self.seen_core_hashes_all = set()
-        self.seen_core_hashes_temp = set()
-        self.hash_history_all = deque(maxlen=20000)
-        self.hash_history_temp = deque(maxlen=20000)
+        self.seen_core_hashes = set()
 
-    def add_node(self, uri, is_temp=False):
+    def add_node(self, uri):
         if not uri or "://" not in uri: return
         h = core_hash(uri)
         if not h: return
-        target_set, target_lock, seen_set, history = (
-            (self.temp_nodes, self.temp_lock, self.seen_core_hashes_temp, self.hash_history_temp)
-            if is_temp else (self.nodes, self.nodes_lock, self.seen_core_hashes_all, self.hash_history_all)
-        )
-        with target_lock:
-            if h not in seen_set:
-                target_set.add(uri)
-                seen_set.add(h)
-                history.append(h)
-                if len(history) == 20000: seen_set.remove(history.popleft())
+        with self.nodes_lock:
+            if h not in self.seen_core_hashes:
+                self.nodes.add(uri)
+                self.seen_core_hashes.add(h)
 
     def add_source(self, url):
         with self.source_lock: self.source_urls.add(url)
 
-    def load_from_file(self, file_path, is_temp=False):
-        if os.path.exists(file_path):
-            try:
-                with open(file_path, "r", encoding="utf-8") as f:
-                    for line in f:
-                        line = line.strip()
-                        if line and not line.startswith("#"): self.add_node(line, is_temp)
-            except: pass
+    def load_dat(self):
+        if os.path.exists(ALL_NODES_DAT):
+            with open(ALL_NODES_DAT, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#"): self.add_node(line)
 
     def load_sources(self):
         if os.path.exists(SOURCE_HISTORY_FILE):
@@ -181,34 +166,29 @@ class NodeManager:
                 for row in csv.reader(f):
                     if row: self.add_source(row[0])
 
-    def save_to_file(self, file_path, is_temp=False):
-        raw_data = sorted(list(self.temp_nodes if is_temp else self.nodes))
+    def save_to_yaml(self, file_path):
+        raw_data = sorted(list(self.nodes))
         clash_proxies = [node for uri in raw_data if (node := parse_uri_to_clash(uri)) and is_valid_clash_node(node)]
         scraped_names = [p["name"] for p in clash_proxies]
 
-        # 深度复制规则配置
         yaml_data = copy.deepcopy(rules_config)
-        
-        # 注入节点到 proxy-groups 中的 "自动优选" 和 "AI 优选"
         proxy_groups = yaml_data.get("proxy-groups", [])
         for group in proxy_groups:
             if group.get("name") in ["自动优选", "AI 优选"]:
                 group["proxies"] = scraped_names
         
-        # 设置基础信息
         yaml_data["proxies"] = clash_proxies
-
         beijing_time = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S")
         with open(file_path + ".tmp", "w", encoding="utf-8") as f:
-            f.write(f"# Last updated: {beijing_time} | Scraped nodes: {len(clash_proxies)}\n")
+            f.write(f"# Last updated: {beijing_time} | Total nodes: {len(clash_proxies)}\n")
             yaml.dump(yaml_data, f, allow_unicode=True, sort_keys=False)
         os.replace(file_path + ".tmp", file_path)
 
     def save_to_dat(self, file_path):
-        all_uris = sorted(list(self.nodes.union(self.temp_nodes)))
+        all_uris = sorted(list(self.nodes))
         beijing_time = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S")
         with open(file_path + ".tmp", "w", encoding="utf-8") as f:
-            f.write(f"# Last updated: {beijing_time} | Total nodes: {len(all_uris)}\n")
+            f.write(f"# Last updated: {beijing_time} | Total permanent nodes: {len(all_uris)}\n")
             for uri in all_uris: f.write(uri + "\n")
         os.replace(file_path + ".tmp", file_path)
 
@@ -230,17 +210,16 @@ def get_session():
         thread_local.session = session
     return thread_local.session
 
-def score_nodes(count, url):
-    return (10 if count <= 2 else 5 if count <= 10 else 1) + (1 if "gist" in url else 0)
-
 def core_hash(uri):
     if not uri or "://" not in uri: return None
-    uri = uri.replace("hy2://", "hysteria2://")
     parsed = urlsplit(uri)
+    # 强化哈希：加入用户名和密码/UUID，防止不同账号被去重
+    auth_part = f"{parsed.username}:{parsed.password}" if (parsed.username or parsed.password) else ""
     netloc = parsed.hostname if parsed.hostname else ""
     query = dict(parse_qsl(parsed.query))
     normalized_query = '&'.join(f'{k}={v}' for k, v in sorted(query.items()))
-    normalized = f"{parsed.scheme}://{netloc}{parsed.path}?{normalized_query}"
+    # 最终指纹包含协议、地址、端口、路径、账号信息和参数
+    normalized = f"{parsed.scheme}://{auth_part}@{netloc}:{parsed.port or ''}{parsed.path}?{normalized_query}"
     return hashlib.md5(normalized.encode()).hexdigest()
 
 def is_valid_node(uri):
@@ -249,7 +228,6 @@ def is_valid_node(uri):
     if not parsed.hostname: return False
     if parsed.scheme.lower() not in ALLOWED_PROTOCOLS: return False
     if any(c in uri for c in ['{', '}', ' ']): return False
-    if not (parsed.username or len(uri.split('@')[-1].split(':')[0].split('.')) > 1): return False
     return True
 
 def extract_nodes(text, depth=0):
@@ -283,9 +261,10 @@ def process_raw(raw_url):
         return raw_url, [], 0
 
 def main():
-    manager.load_from_file(ALL_NODES_FILE, is_temp=False)
-    manager.load_from_file(TEMP_LOG_FILE, is_temp=True)
+    # 1. 启动仅加载永久节点库
+    manager.load_dat()
     manager.load_sources()
+    
     urls_to_scan = set()
     for page in range(1, config["settings"].get("gist_pages", 1) + 1):
         try:
@@ -309,11 +288,10 @@ def main():
                 manager.add_source(url)
                 active_urls_found.append(url)
                 with stats_lock: stats_data[url] = count
-                score = score_nodes(count, url)
-                for node in result: manager.add_node(node, is_temp=(score >= 8))
+                for node in result: manager.add_node(node) # 自动增量追加，不删除旧数据
 
-    manager.save_to_file(ALL_NODES_FILE, is_temp=False)
-    manager.save_to_file(TEMP_LOG_FILE, is_temp=True)
+    # 2. 导出 YAML 和 DAT
+    manager.save_to_yaml(ALL_NODES_FILE)
     manager.save_to_dat(ALL_NODES_DAT)
     manager.save_sources()
 
@@ -333,7 +311,7 @@ def main():
         writer = csv.writer(f)
         writer.writerow(["url", "nodes_found"])
         for url, count in stats_data.items(): writer.writerow([url, count])
-    print(f"Success! Total nodes: {len(manager.nodes) + len(manager.temp_nodes)}. Sources: {len(manager.source_urls)}")
+    print(f"Success! Total permanent nodes: {len(manager.nodes)}. Sources: {len(manager.source_urls)}")
 
 if __name__ == "__main__":
     main()
