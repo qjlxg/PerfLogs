@@ -140,6 +140,7 @@ class NodeManager:
         self.nodes_lock = threading.Lock()
         self.source_lock = threading.Lock()
         self.seen_core_hashes = set()
+        self.initial_node_count = 0
 
     def add_node(self, uri):
         if not uri or "://" not in uri: return
@@ -159,6 +160,7 @@ class NodeManager:
                 for line in f:
                     line = line.strip()
                     if line and not line.startswith("#"): self.add_node(line)
+            self.initial_node_count = len(self.nodes)
 
     def load_sources(self):
         if os.path.exists(SOURCE_HISTORY_FILE):
@@ -186,6 +188,11 @@ class NodeManager:
 
     def save_to_dat(self, file_path):
         all_uris = sorted(list(self.nodes))
+        # 安全校验：防止数据被意外清空
+        if self.initial_node_count > 10 and len(all_uris) < (self.initial_node_count * 0.5):
+            logging.error(f"Critical: Current node count ({len(all_uris)}) is too low compared to initial ({self.initial_node_count}). Skipping update.")
+            return
+
         beijing_time = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S")
         with open(file_path + ".tmp", "w", encoding="utf-8") as f:
             f.write(f"# Last updated: {beijing_time} | Total permanent nodes: {len(all_uris)}\n")
@@ -213,12 +220,10 @@ def get_session():
 def core_hash(uri):
     if not uri or "://" not in uri: return None
     parsed = urlsplit(uri)
-    # 强化哈希：加入用户名和密码/UUID，防止不同账号被去重
     auth_part = f"{parsed.username}:{parsed.password}" if (parsed.username or parsed.password) else ""
     netloc = parsed.hostname if parsed.hostname else ""
     query = dict(parse_qsl(parsed.query))
     normalized_query = '&'.join(f'{k}={v}' for k, v in sorted(query.items()))
-    # 最终指纹包含协议、地址、端口、路径、账号信息和参数
     normalized = f"{parsed.scheme}://{auth_part}@{netloc}:{parsed.port or ''}{parsed.path}?{normalized_query}"
     return hashlib.md5(normalized.encode()).hexdigest()
 
@@ -261,7 +266,6 @@ def process_raw(raw_url):
         return raw_url, [], 0
 
 def main():
-    # 1. 启动仅加载永久节点库
     manager.load_dat()
     manager.load_sources()
     
@@ -288,9 +292,8 @@ def main():
                 manager.add_source(url)
                 active_urls_found.append(url)
                 with stats_lock: stats_data[url] = count
-                for node in result: manager.add_node(node) # 自动增量追加，不删除旧数据
+                for node in result: manager.add_node(node)
 
-    # 2. 导出 YAML 和 DAT
     manager.save_to_yaml(ALL_NODES_FILE)
     manager.save_to_dat(ALL_NODES_DAT)
     manager.save_sources()
