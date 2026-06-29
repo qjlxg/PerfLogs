@@ -19,6 +19,7 @@ search_keywords:
     - ".yaml"
     - ".json"
     - "proxies:- name:"
+    - "gistfile1.txt"
 
     # 2. 核心协议与技术栈：针对特定技术协议的关键字
     - "vless"
