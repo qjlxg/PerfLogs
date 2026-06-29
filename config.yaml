@@ -2,6 +2,30 @@
 # Gist 节点爬虫配置文件 (config.yaml)
 # ==============================================================================
 
+# 新增：GitHub Code Search & Gist 采集优化搜索策略
+search_queries:
+  # 1. 基础覆盖：确保捕获常规的、个人分享的配置文件
+  base_coverage:
+    - 'filename:config.yaml vless'
+    - 'filename:config.yml hysteria2'
+    - 'filename:proxies.yml reality'
+    - 'filename:nodes.yaml tuic'
+    - 'gistfile1.txt vless'
+    - '自用 vless reality'
+    - 'personal tuic config'
+    - 'self-hosted proxy'
+
+  # 2. 精准挖掘：针对 Reality/Hysteria2/Tuic 的特征指纹（抗屏蔽）
+  precision_hunting:
+    - 'reality-opts public-key sid extension:yaml'
+    - 'fingerprint:chrome reality-opts extension:json'
+    - 'hysteria2 obfs extension:txt path:config/'
+    - 'congestion_control:cubic alpn:h3 tuic'
+    - 'filename:config.yaml path:test/'
+    - 'filename:proxy.json path:deploy/'
+    - 'vless sni reality-opts extension:cfg'
+    - 'grpc-service-name ws-opts host path'
+
 # 搜索与过滤逻辑：定义爬虫在 GitHub Gist 搜索时的意图关键词
 search_keywords:
   # include: 包含策略，命中这些关键词的文件会被优先纳入采集范围
@@ -110,11 +134,11 @@ protocols:
 
 # 性能与扫描范围设置
 settings:
-  max_file_size_mb: 5       # 单个文件采集最大体积，防止过大文件浪费流量
-  max_workers: 15           # 并发线程数，决定同时请求多个 URL 的速度
-  gist_pages: 138            # 搜索页数，决定 GitHub API 抓取覆盖范围
-  timeout_seconds: 20       # 请求超时阈值，防止死锁
-  small_source_limit: 6     # 小源节点阈值，辅助评分逻辑
+  max_file_size_mb: 5         # 单个文件采集最大体积，防止过大文件浪费流量
+  max_workers: 15             # 并发线程数，决定同时请求多个 URL 的速度
+  gist_pages: 138             # 搜索页数，决定 GitHub API 抓取覆盖范围
+  timeout_seconds: 20         # 请求超时阈值，防止死锁
+  small_source_limit: 6       # 小源节点阈值，辅助评分逻辑
 
 # 代理组测速设置：该参数会直接写入 Clash 配置文件中供本地客户端使用
 proxy_group_settings:
