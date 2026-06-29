@@ -111,7 +111,7 @@ protocols:
 settings:
   max_file_size_mb: 5       # 单个文件采集最大体积，防止过大文件浪费流量
   max_workers: 15           # 并发线程数，决定同时请求多个 URL 的速度
-  gist_pages: 38            # 搜索页数，决定 GitHub API 抓取覆盖范围
+  gist_pages: 138            # 搜索页数，决定 GitHub API 抓取覆盖范围
   timeout_seconds: 20       # 请求超时阈值，防止死锁
   small_source_limit: 6     # 小源节点阈值，辅助评分逻辑
 
