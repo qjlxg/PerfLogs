@@ -8,10 +8,9 @@ import hashlib
 import base64
 import logging
 import copy
-import time
 from datetime import datetime, timezone, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from urllib.parse import unquote, parse_qsl, urlsplit, quote
+from urllib.parse import unquote, parse_qsl, urlsplit
 from collections import deque
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -67,14 +66,6 @@ PROTO_PATTERNS = {
     p: re.compile(rf"{re.escape(p)}[a-zA-Z0-9\-\._~:/\?#\[\]@!$&'()*+,;=]{{20,256}}", re.I)
     for p in sorted(SUPPORTED_PROTOCOLS, key=len, reverse=True)
 }
-
-# 新增 Code Search 查询关键词
-GH_SEARCH_QUERIES = [
-    'vless reality path:*.txt',
-    'hysteria2 path:*.txt',
-    'tuic path:*.txt',
-    'filename:config.yaml'
-]
 
 thread_local = threading.local()
 
@@ -197,6 +188,7 @@ class NodeManager:
 
     def save_to_dat(self, file_path):
         all_uris = sorted(list(self.nodes))
+        # 安全校验：防止数据被意外清空
         if self.initial_node_count > 10 and len(all_uris) < (self.initial_node_count * 0.5):
             logging.error(f"Critical: Current node count ({len(all_uris)}) is too low compared to initial ({self.initial_node_count}). Skipping update.")
             return
@@ -273,25 +265,11 @@ def process_raw(raw_url):
         except Exception as e: logging.error(f"Failed to fetch {raw_url}: {e}")
         return raw_url, [], 0
 
-# 新增 Code Search 逻辑
-def search_code_by_keywords(urls_to_scan):
-    for query in GH_SEARCH_QUERIES:
-        try:
-            resp = get_session().get(f"https://api.github.com/search/code?q={quote(query)}&per_page=30", timeout=TIMEOUT)
-            if resp.status_code == 200:
-                for item in resp.json().get("items", []):
-                    raw_url = item.get("html_url", "").replace("github.com", "raw.githubusercontent.com").replace("/blob/", "/")
-                    if raw_url: urls_to_scan.add(raw_url)
-            time.sleep(1)
-        except: continue
-
 def main():
     manager.load_dat()
     manager.load_sources()
     
     urls_to_scan = set()
-    
-    # 1. 执行原有的 Gist 时间流抓取
     for page in range(1, config["settings"].get("gist_pages", 1) + 1):
         try:
             resp = get_session().get(f"https://api.github.com/gists/public?page={page}&per_page=100", timeout=TIMEOUT)
@@ -304,9 +282,6 @@ def main():
                             if raw and not (fn in EXCLUDE_EQUALS or any(k in fn for k in EXCLUDE_CONTAINS)): 
                                 urls_to_scan.add(raw)
         except: continue
-
-    # 2. 融合 Code Search 补充抓取
-    search_code_by_keywords(urls_to_scan)
 
     active_urls_found = []
     with ThreadPoolExecutor(max_workers=12) as executor:
